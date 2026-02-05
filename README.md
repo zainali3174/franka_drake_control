@@ -8,9 +8,11 @@ Drake-based forward/inverse kinematics and motion planning for Franka Emika Pand
 - **RT Kernel** 
 - **Docker Desktop:** For building libfranka 0.8.0
 - **Drake:** Built from source using Bazel
+- **Ros:** ROS 2 Jazzy
 - **Hardware:** Franka Emika Panda (FER) with firmware v4.x
 
-**Note:** These are the steps that I followed and may not be the most optimal method.
+**Note:** These are the steps that I followed and may not be the most optimal method. This project assumes a standard development environment with common robotics/system libraries already installed.
+Additional dependencies may be required depending on your setup. Please install any missing packages reported during compilation.
 
 ## Current System Architecture
 ```
@@ -59,20 +61,64 @@ https://docs.docker.com/desktop/setup/install/linux/ubuntu/
 Follow the documentation provided here:
 https://drake.mit.edu/bazel.html
 
-Set environment variables(TBV):
-**These commands may or may not be required — needs verification**
+### 4. Installing ROS 2 Jazzy (TBV)
+```bash
+
+sudo apt install software-properties-common curl -y
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc -o /usr/share/keyrings/ros-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+# Install ROS
+sudo apt update
+sudo apt install ros-jazzy-desktop python3-colcon-common-extensions
+```
+### 5. Create Workspace and Clone Panda Description
 
 ```bash
+# Create your workspace 
+mkdir -p ~/ws/franka/src
+cd ~/ws/franka/src
+
+# Get the panda description
+git clone https://github.com/m-elwin/franka_description
+cd franka_description
+git checkout panda
+```
+
+### 6. Install Drake (Pre-built Binary)
+
+```bash
+cd ~
+wget https://github.com/RobotLocomotion/drake/releases/download/v1.40.0/drake-1.40.0-noble.tar.gz
+mkdir -p ~/drake
+tar -xvzf drake-1.40.0-noble.tar.gz -C drake --strip-components=1
+```
+
+Set environment variables:
+```bash
 echo 'export DRAKE_INSTALL_DIR=$HOME/drake' >> ~/.bashrc
+echo 'export CMAKE_PREFIX_PATH=$HOME/drake/install:$CMAKE_PREFIX_PATH' >> ~/.bashrc
 echo 'export PATH=$DRAKE_INSTALL_DIR/bin:$PATH' >> ~/.bashrc
 echo 'export LD_LIBRARY_PATH=$DRAKE_INSTALL_DIR/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
-echo 'export PYTHONPATH=~/drake/install/lib/python3.12/site-packages:$PYTHONPATH' >> ~/.bashrc
+echo 'export PYTHONPATH=$HOME/drake/install/lib/python3.12/site-packages:$PYTHONPATH' >> ~/.bashrc
+echo 'source /opt/ros/jazzy/setup.bash' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### 4. Clone and Build franka_drake
+### 7. Install libfranka (Used for Simulation)
+
 ```bash
-mkdir -p ~/ws/franka
+cd ~
+git clone https://github.com/KhachDavid/libfranka.git
+cd libfranka
+mkdir build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make -j$(nproc)
+sudo make install
+```
+
+### 8. Clone franka_drake Driver
+
+```bash
 cd ~/ws/franka
 git clone https://github.com/KhachDavid/franka_drake.git
 cd franka_drake
@@ -82,13 +128,16 @@ cd franka_drake
 ```bash
 nano CMakeLists.txt
 ```
-Find the line:
+Find the lins:
 ```cmake
-find_package(Franka REQUIRED)
+find_package(drake REQUIRED)
+find_package(Poco REQUIRED COMPONENTS Foundation Net)
+
 ```
 
-Replace with:
+ with:
 ```cmake
+find_package(drake REQUIRED)
 # Manual Franka setup for hardware compatibility
 if(DEFINED ENV{FRANKA_HW_BUILD})
     add_library(Franka::Franka SHARED IMPORTED)
@@ -100,26 +149,86 @@ if(DEFINED ENV{FRANKA_HW_BUILD})
 else()
     find_package(Franka REQUIRED)
 endif()
+find_package(Poco REQUIRED COMPONENTS Foundation Net)
 ```
 
-Build simulation version:
+### 9. Generate URDF for Drake
+
+Build franka_description package:
 ```bash
-mkdir build && cd build
-cmake .. -DCMAKE_PREFIX_PATH="$HOME/drake/install"
+cd ~/ws/franka
+colcon build --packages-select franka_description
+source install/setup.bash
+```
+
+Generate URDF:
+```bash
+cd src/franka_description
+git branch # you should be on panda branch
+xacro robots/fer/fer.urdf.xacro hand:=true > fer_drake.urdf
+```
+
+**Important:** The URDF uses .stl meshes, which cause scale/unit problems in Drake. To avoid errors, collision meshes need to be commented out.
+
+Create a Python script to comment out STL collisions:
+```bash
+cd ~/ws/franka/src/franka_description
+cat > comment_stl_collisions.py << 'EOF'
+import re
+
+with open('fer_drake.urdf', 'r') as f:
+    content = f.read()
+
+lines = content.split('\n')
+result = []
+in_collision = False
+collision_buffer = []
+has_stl = False
+
+for line in lines:
+    if '<collision' in line:
+        in_collision = True
+        collision_buffer = [line]
+        has_stl = False
+    elif in_collision:
+        collision_buffer.append(line)
+        if '.stl' in line:
+            has_stl = True
+        if '</collision>' in line:
+            if has_stl:
+                result.append('    <!-- Temporarily disabled for Drake')
+                result.extend(collision_buffer)
+                result.append('    -->')
+            else:
+                result.extend(collision_buffer)
+            in_collision = False
+            collision_buffer = []
+    else:
+        result.append(line)
+
+with open('fer_drake.urdf', 'w') as f:
+    f.write('\n'.join(result))
+
+print("Done! STL collisions commented out.")
+EOF
+```
+
+Run the script:
+```bash
+python3 comment_stl_collisions.py
+```
+
+### 10. Build franka_drake
+
+```bash
+cd ~/ws/franka/franka_drake
+mkdir -p build && cd build
+cmake ..
 make -j$(nproc)
 ```
+**Note:** Now you can test your simulations.
 
-### 5. Install libfranka
-```bash
-cd ~
-git clone https://github.com/frankaemika/libfranka.git
-cd libfranka
-mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make -j$(nproc)
-```
-
-### 6. Build libfranka 0.8.0 for Hardware (Docker)
+### 11. Build libfranka 0.8.0 for Hardware (Docker)
 ```bash
 cd ~
 git clone https://github.com/frankaemika/libfranka.git libfranka-hw
@@ -180,7 +289,7 @@ ls ~/libfranka-hw-bin/libfranka.so*
 # Should show: libfranka.so.0.8 and libfranka.so.0.8.0
 ```
 
-### 7. Build franka_drake for Hardware
+### 12. Build franka_drake for Hardware
 ```bash
 cd ~/ws/franka/franka_drake
 mkdir build-hw && cd build-hw
@@ -196,7 +305,7 @@ ldd ./bin/panda-fk-simple | grep libfranka
 # Should show: libfranka.so.0.8 => /home/<user>/libfranka-hw-bin/libfranka.so.0.8
 ```
 
-### 8. Set Library Path
+### 13. Set Library Path
 ```bash
 echo 'export LD_LIBRARY_PATH=~/libfranka-hw-bin:$LD_LIBRARY_PATH' >> ~/.bashrc
 source ~/.bashrc
@@ -204,7 +313,7 @@ source ~/.bashrc
 
 ## Usage
 
-### Running Simulation
+### Running a libfranka built-in example in simulation
 
 **Terminal 1:** Start Drake simulation server
 ```bash
@@ -218,25 +327,12 @@ http://localhost:7000/
 ```
 
 **Terminal 2:** Run examples
-
-Built-in libfranka examples:
 ```bash
 cd ~/libfranka/build/examples
-./generate_elbow_motion 127.0.0.1
 ./generate_consecutive_motions 127.0.0.1
 ```
 
-Custom Drake-based examples:
-```bash
-cd ~/ws/franka/franka_drake/build
-# Forward Kinematics: <robot_ip> <j0> <j1> <j2> <j3> <j4> <j5> <j6> <speed>
-./bin/panda-fk-simple 127.0.0.1 0 -45 0 -135 0 90 45 0.5
-
-# Inverse Kinematics: <robot_ip> <x> <y> <z> <speed>
-./bin/panda-ik-simple 127.0.0.1 0.5 0.0 0.5 0.3
-```
-
-### Running on Hardware
+### Running a libfranka built-in example on hardware
 
 **Prerequisites:**
 - Robot powered on and connected via Ethernet
@@ -245,24 +341,11 @@ cd ~/ws/franka/franka_drake/build
 - User stop button released (white light)
 - FCI mode activated
 
-Built-in libfranka examples:
+**Terminal 1:** Run examples
 ```bash
 export LD_LIBRARY_PATH=~/libfranka-hw-bin:$LD_LIBRARY_PATH
 cd ~/libfranka-hw-bin/examples
 ./generate_elbow_motion 172.16.0.2
-./generate_consecutive_motions 172.16.0.2
-```
-
-Custom Drake-based examples:
-```bash
-cd ~/ws/franka/franka_drake/build-hw
-export LD_LIBRARY_PATH=~/libfranka-hw-bin:$LD_LIBRARY_PATH
-
-# Forward Kinematics
-./bin/panda-fk-simple 172.16.0.2 0 -45 0 -135 0 90 45 0.5
-
-# Inverse Kinematics
-./bin/panda-ik-simple 172.16.0.2 0.5 0.0 0.5 0.3
 ```
 
 ## Creating Your Own Examples
@@ -311,6 +394,27 @@ export LD_LIBRARY_PATH=~/libfranka-hw-bin:$LD_LIBRARY_PATH
 ./bin/my-example 172.16.0.2
 ```
 
+Custom Drake-based examples:
+```bash
+cd ~/ws/franka/franka_drake/build
+# Forward Kinematics: <robot_ip> <j0> <j1> <j2> <j3> <j4> <j5> <j6> <speed>
+./bin/panda-fk-simple 127.0.0.1 0 -45 0 -135 0 90 45 0.5
+
+# Inverse Kinematics: <robot_ip> <x> <y> <z> <speed>
+./bin/panda-ik-simple 127.0.0.1 0.5 0.0 0.5 0.3
+```
+
+Custom Drake-based examples:
+```bash
+cd ~/ws/franka/franka_drake/build-hw
+export LD_LIBRARY_PATH=~/libfranka-hw-bin:$LD_LIBRARY_PATH
+
+# Forward Kinematics
+./bin/panda-fk-simple 172.16.0.2 0 -45 0 -135 0 90 45 0.5
+
+# Inverse Kinematics
+./bin/panda-ik-simple 172.16.0.2 0.5 0.0 0.5 0.3
+```
 
 ### Robot Connection Refused
 

@@ -57,11 +57,48 @@ https://docs.docker.com/desktop/setup/install/linux/ubuntu/
 
 **Note:** Make sure docker is running before running any docker command.
 
-### 3. Install Drake from Source
+### 3. Install Drake
+
+**Note:** These instructions cover Drake built from source using Bazel. If you want to avoid hours of compilation, a pre-built binary alternative is provided below (currently unverified - TBV).
+
+#### Option A: Drake Built from Source (Recommended - Verified)
+
 Follow the documentation provided here:
 https://drake.mit.edu/bazel.html
 
-### 4. Installing ROS 2 Jazzy (TBV)
+Set environment variables for source build:
+```bash
+echo 'export DRAKE_INSTALL_DIR=$HOME/drake/install' >> ~/.bashrc
+echo 'export CMAKE_PREFIX_PATH=$HOME/drake/install:$CMAKE_PREFIX_PATH' >> ~/.bashrc
+echo 'export PATH=$DRAKE_INSTALL_DIR/bin:$PATH' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=$DRAKE_INSTALL_DIR/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
+echo 'export PYTHONPATH=$HOME/drake/install/lib/python3.12/site-packages:$PYTHONPATH' >> ~/.bashrc
+echo 'source /opt/ros/jazzy/setup.bash' >> ~/.bashrc
+source ~/.bashrc
+```
+
+#### Option B: Drake Pre-built Binary (Alternative - TBV)
+
+```bash
+cd ~
+wget https://github.com/RobotLocomotion/drake/releases/download/v1.40.0/drake-1.40.0-noble.tar.gz
+mkdir -p ~/drake
+tar -xvzf drake-1.40.0-noble.tar.gz -C drake --strip-components=1
+```
+
+Set environment variables for pre-built binary:
+```bash
+echo 'export DRAKE_INSTALL_DIR=$HOME/drake' >> ~/.bashrc
+echo 'export CMAKE_PREFIX_PATH=$HOME/drake:$CMAKE_PREFIX_PATH' >> ~/.bashrc
+echo 'export PATH=$DRAKE_INSTALL_DIR/bin:$PATH' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=$DRAKE_INSTALL_DIR/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
+echo 'export PYTHONPATH=$HOME/drake/lib/python3.12/site-packages:$PYTHONPATH' >> ~/.bashrc
+echo 'source /opt/ros/jazzy/setup.bash' >> ~/.bashrc
+source ~/.bashrc
+```
+
+
+### 4. Installing ROS 2 Jazzy 
 ```bash
 
 sudo apt install software-properties-common curl -y
@@ -84,27 +121,7 @@ cd franka_description
 git checkout panda
 ```
 
-### 6. Install Drake (Pre-built Binary)
-
-```bash
-cd ~
-wget https://github.com/RobotLocomotion/drake/releases/download/v1.40.0/drake-1.40.0-noble.tar.gz
-mkdir -p ~/drake
-tar -xvzf drake-1.40.0-noble.tar.gz -C drake --strip-components=1
-```
-
-Set environment variables:
-```bash
-echo 'export DRAKE_INSTALL_DIR=$HOME/drake' >> ~/.bashrc
-echo 'export CMAKE_PREFIX_PATH=$HOME/drake/install:$CMAKE_PREFIX_PATH' >> ~/.bashrc
-echo 'export PATH=$DRAKE_INSTALL_DIR/bin:$PATH' >> ~/.bashrc
-echo 'export LD_LIBRARY_PATH=$DRAKE_INSTALL_DIR/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
-echo 'export PYTHONPATH=$HOME/drake/install/lib/python3.12/site-packages:$PYTHONPATH' >> ~/.bashrc
-echo 'source /opt/ros/jazzy/setup.bash' >> ~/.bashrc
-source ~/.bashrc
-```
-
-### 7. Install libfranka (Used for Simulation)
+### 6. Install libfranka (Used for Simulation)
 
 ```bash
 cd ~
@@ -116,7 +133,7 @@ make -j$(nproc)
 sudo make install
 ```
 
-### 8. Clone franka_drake Driver
+### 7. Clone franka_drake Driver
 
 ```bash
 cd ~/ws/franka
@@ -152,7 +169,7 @@ endif()
 find_package(Poco REQUIRED COMPONENTS Foundation Net)
 ```
 
-### 9. Generate URDF for Drake
+### 8. Generate URDF for Drake
 
 Build franka_description package:
 ```bash
@@ -218,7 +235,7 @@ Run the script:
 python3 comment_stl_collisions.py
 ```
 
-### 10. Build franka_drake
+### 9. Build franka_drake
 
 ```bash
 cd ~/ws/franka/franka_drake
@@ -228,7 +245,7 @@ make -j$(nproc)
 ```
 **Note:** Now you can test your simulations.
 
-### 11. Build libfranka 0.8.0 for Hardware (Docker)
+### 10. Build libfranka 0.8.0 for Hardware (Docker)
 ```bash
 cd ~
 git clone https://github.com/frankaemika/libfranka.git libfranka-hw
@@ -289,7 +306,7 @@ ls ~/libfranka-hw-bin/libfranka.so*
 # Should show: libfranka.so.0.8 and libfranka.so.0.8.0
 ```
 
-### 12. Build franka_drake for Hardware
+### 11. Build franka_drake for Hardware
 ```bash
 cd ~/ws/franka/franka_drake
 mkdir build-hw && cd build-hw

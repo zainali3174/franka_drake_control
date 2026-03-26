@@ -459,7 +459,7 @@ export LD_LIBRARY_PATH=~/libfranka-hw-bin:$LD_LIBRARY_PATH
 ## Known Limitations
 
 - **Gripper mimic warning:** Safe to ignore - only affects internal Drake modeling, not actual gripper control
-- **Docker for building only:** Cannot run libfranka in Docker due to RT requirements
+- **Docker for building only:** Cannot run libfranka in Docker due to RT kernel requirements
 - **Two libfranka versions:** Necessary due to robot firmware FCI protocol version mismatch
 - **Process isolation:** Drake FK computation uses fork() to avoid memory conflicts with libfranka 0.8.0
 

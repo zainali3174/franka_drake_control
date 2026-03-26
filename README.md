@@ -481,6 +481,12 @@ MIT License - See LICENSE file for details
 - Franka Emika for libfranka
 - franka_drake original developers
 
+
+## Authors
+
+- Zain Ali Zahid
+- Fida Hussain
+- Mechatronics Engineers | UET Lahore
 ---
 
 **For questions or issues, please open a GitHub issue.**
